@@ -20,6 +20,8 @@ static const float kMessageDisplayDuring = 2.0f;
 @property (strong, nonatomic) NSMutableDictionary *m_DataSource;
 @property (assign, nonatomic) BOOL m_isDataPrepared;
 @property (strong, nonatomic) UILabel *m_MessageLabel;
+@property (strong, nonatomic) UIActivityIndicatorView* m_Progress;
+@property (assign, nonatomic) BOOL m_IsOpeningMouth;
 // 类型为0的贴纸数组
 @property (strong, nonatomic) NSMutableArray *m_StickersType0;
 // 类型为1的贴纸数组
@@ -39,6 +41,10 @@ static const float kMessageDisplayDuring = 2.0f;
         self.m_MessageLabel.textColor = [UIColor blackColor];
         self.m_MessageLabel.textAlignment = NSTextAlignmentCenter;
         [self addSubview:self.m_MessageLabel];
+        
+        self.m_Progress = [[UIActivityIndicatorView alloc]initWithFrame:CGRectMake(frame.size.width / 2 - 20, frame.size.height / 2 - 20, 40, 40)];
+        self.m_Progress.activityIndicatorViewStyle = UIActivityIndicatorViewStyleWhiteLarge;
+        [self addSubview:self.m_Progress];
     }
     return self;
 }
@@ -52,6 +58,7 @@ static const float kMessageDisplayDuring = 2.0f;
     [self.m_StickersType23 addObject:face1];
     self.m_MessageLabel.text = @"";
     self.m_isDataPrepared = NO;
+    self.m_MessageLabel.alpha = 1;
 }
 - (void)hideMessage{
     [UIView animateWithDuration:1 animations:^{
@@ -68,13 +75,9 @@ static const float kMessageDisplayDuring = 2.0f;
         return path;
     }
 }
+// 准备数据，比较耗时，异步做。
 - (void)prepareData:(NSString*)name catagory:(NSString*)catagory isDefault:(BOOL)isDefault{
     [self initData];
-    // 显示一下message
-    //    self.m_MessageLabel.alpha = 1;
-    //    self.m_MessageLabel.text = @"张开嘴";
-    //    [self performSelector:@selector(hideMessage) withObject:nil afterDelay:kMessageDisplayDuring];
-    
     // 按照m_StickerName找到手机路径下的资源包
     NSString *infoTxt = [self pathByName:name suffix:@"txt" catagory:catagory isDefault:isDefault];
     NSString*str=[[NSString alloc] initWithContentsOfFile:infoTxt encoding:NSUTF8StringEncoding error:nil];
@@ -92,7 +95,6 @@ static const float kMessageDisplayDuring = 2.0f;
         sticker.m_Info = item;
         sticker.m_CurrentFrame = 0;
         // 按照json的顺序加入，保证了元素的上下层的关系
-        [self.layer addSublayer:sticker];
         int type = [item[@"type"]intValue];
         switch (type) {
             case StickerTypePositionFixContentFix:
@@ -179,13 +181,19 @@ static const float kMessageDisplayDuring = 2.0f;
 }
 // 设置贴纸数据源
 - (void)displayStickerByName:(NSString*)name catagory:(NSString*)catagory isDefault:(BOOL)isDefault{
+    // 首先清除上一个贴图的所以贴纸
+    [self clearStickers];
     dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    [self.m_Progress startAnimating];
     dispatch_async(queue, ^{
         self.m_isDataPrepared = NO;
         [self prepareData:name catagory:catagory isDefault:isDefault];
         dispatch_async(dispatch_get_main_queue(), ^{
+            [self.m_Progress stopAnimating];
             self.m_isDataPrepared = YES;
             [self drawStickerOnlyOnce];
+            self.m_MessageLabel.text = @"张开嘴";
+            [self performSelector:@selector(hideMessage) withObject:nil afterDelay:kMessageDisplayDuring];
         });
     });
 //    NSLog(@"m_DataSource:%@",self.m_DataSource);
@@ -228,7 +236,7 @@ static const float kMessageDisplayDuring = 2.0f;
         if(i >= faceCount){
             NSMutableArray *stickers = self.m_StickersType23[i];
             for(HMSticker *sticker in stickers){
-                sticker.contents = nil;
+                sticker.hidden = YES;
             }
             continue;
         }
@@ -236,11 +244,17 @@ static const float kMessageDisplayDuring = 2.0f;
         int roll = [[dicPerson objectForKey:@"roll"]intValue];
         NSMutableArray *stickers = self.m_StickersType23[i];
         for (HMSticker *sticker in stickers) {
+            //如果sticker从屏幕外部进入，有可能是隐藏状态。
+            if(sticker.hidden == YES){
+                sticker.hidden = NO;
+            }
             //算宽高
             int leftIndex = [sticker.m_Info[@"leftIndex"]intValue];
             int rightIndex = [sticker.m_Info[@"rightIndex"]intValue];
             int scaleWidth = [sticker.m_Info[@"scaleWidth"]intValue];
             NSMutableArray *pointList = [dicPerson objectForKey:@"POINTS_KEY"];
+            
+            
             int x1 = (CGPointFromString(pointList[leftIndex])).x;
             int y1 = (CGPointFromString(pointList[leftIndex])).y;
             int x2 = (CGPointFromString(pointList[rightIndex])).x;
@@ -250,6 +264,19 @@ static const float kMessageDisplayDuring = 2.0f;
             float scale = distance / scaleWidth;
             float width = [sticker.m_Info[@"width"]floatValue]*scale;
             float height = [sticker.m_Info[@"height"]floatValue]*scale;
+            
+            // 这里捎带计算一下触发行为：
+            int x98 = (CGPointFromString(pointList[98])).x;
+            int y98 = (CGPointFromString(pointList[98])).y;
+            int x102 = (CGPointFromString(pointList[102])).x;
+            int y102 = (CGPointFromString(pointList[102])).y;
+            float distanceOfMouth = sqrtf((float)((x98-x102)*(x98-x102)+(y98-y102)*(y98-y102)));
+            if(distanceOfMouth > distance * 30 / 230){
+                self.m_IsOpeningMouth = YES;
+            }else{
+                self.m_IsOpeningMouth = NO;
+            }
+            
             //算位置
             int followx;
             int followy;
@@ -273,18 +300,14 @@ static const float kMessageDisplayDuring = 2.0f;
             // 设置角度、位置、大小、贴图
             CGPoint stickerCenter = CGPointMake(targetX * screenScale, targetY * screenScale);
             if(sticker.m_LastRoll != roll){
-                [self rotateStricker:roll :sticker];
+                sticker.transform = CATransform3DMakeRotation(radians(roll), 0, 0, 1);
                 sticker.m_LastRoll = roll;
             }
             sticker.position = stickerCenter;
             sticker.bounds = CGRectMake(0, 0, width * screenScale, height * screenScale);
-            
             [self changeStickerContent:sticker];
         }
     }
-}
-- (void)rotateStricker:(int)roll :(HMSticker*)sticker{
-    sticker.transform = CATransform3DMakeRotation(radians(roll), 0, 0, 1);
 }
 // 执行一次就不用再改变的绘制：包括type0的全部绘制，以及type1的位置绘制。
 - (void)drawStickerOnlyOnce{
@@ -313,19 +336,33 @@ static const float kMessageDisplayDuring = 2.0f;
         sticker.position = CGPointMake((originx + width/2) * screenScale, (originy + height/2) * screenScale);
         sticker.bounds = CGRectMake(0, 0, width * screenScale, height * screenScale);
     }
+    //将初始所有贴纸元素加入到屏幕上。
     for (HMSticker *sticker in self.m_StickersType23[0]) {
         [self.layer addSublayer:sticker];
     }
 }
-/// type为1的贴纸的内容改变，每帧一次
+// type为1的贴纸的内容改变，每帧一次
 - (void)changeStickerType1Content{
     for (HMSticker *sticker in self.m_StickersType1) {
         [self changeStickerContent:sticker];
     }
 }
+// 改变一个sticker的内容
 - (void)changeStickerContent:(HMSticker*)sticker{
     //图片再也不用更新了，可能原因：1.循环一次就结束的sticer。2.type为2，设置过一次图片的sticer。
     if(sticker.m_TheEnd)return;
+    // 触发行为的影响
+    if([[sticker.m_Info allKeys]containsObject:@"triggerType"]){
+        int triggerType = [sticker.m_Info[@"triggerType"]intValue];
+        if(triggerType == 0){//张嘴才显示
+            if(self.m_IsOpeningMouth){
+                
+            }else{
+                sticker.contents = nil;
+                return;
+            }
+        }
+    }
     // 元素名
     NSString *resourceName = sticker.m_Info[@"resourceName"];
     NSString *imageContent = [NSString stringWithFormat:@"%@_img",resourceName];
@@ -340,6 +377,7 @@ static const float kMessageDisplayDuring = 2.0f;
     sticker.contents = (__bridge id _Nullable)([[UIImage imageWithData:imgData]CGImage]);
     sticker.m_CurrentFrame ++ ;
 }
+// 从大图取小图
 - (NSData*)generateImgFromBigImg:(UIImage*)bigImage byInfo:(NSDictionary*)jsonDic{
     int x = [jsonDic[@"x"]intValue];
     int y = [jsonDic[@"y"]intValue];
@@ -351,16 +389,36 @@ static const float kMessageDisplayDuring = 2.0f;
     int sourceH = [jsonDic[@"sourceH"]intValue];
     CGRect rectimg = CGRectMake(x, y, w, h);
     CGImageRef imageRef = CGImageCreateWithImageInRect([bigImage CGImage], rectimg);
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(sourceW, sourceH),NO,1.0);
-    [[UIImage imageWithCGImage:imageRef] drawInRect:CGRectMake(offX, offY, w, h)];
-    UIImage *resultImage=UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    
+//    UIGraphicsBeginImageContextWithOptions(CGSizeMake(sourceW, sourceH),NO,1.0);
+//    [[UIImage imageWithCGImage:imageRef] drawInRect:CGRectMake(offX, offY, w, h)];
+//    UIImage *resultImage=UIGraphicsGetImageFromCurrentImageContext();
+//    UIGraphicsEndImageContext();
+//    CGImageRelease(imageRef);
+//    NSData *imgData = UIImagePNGRepresentation(resultImage);
+//    return imgData;
+    
+    NSData *imgData = UIImagePNGRepresentation([UIImage imageWithCGImage:imageRef]);
     CGImageRelease(imageRef);
-    NSData *imgData = UIImagePNGRepresentation(resultImage);
     return imgData;
+    
+}
+// 清除所有sticker（从内存中消除），换贴纸时会首先调用
+- (void)clearStickers{
+    for (HMSticker *sticker in self.m_StickersType0) {
+        [sticker removeFromSuperlayer];
+    }
+    //type1的贴纸可以先把轮廓绘制出来，稍后每帧改变内容。
+    for (HMSticker *sticker in self.m_StickersType1) {
+        [sticker removeFromSuperlayer];
+    }
+    //将初始所有贴纸元素加入到屏幕上。
+    for (HMSticker *sticker in self.m_StickersType23[0]) {
+        [sticker removeFromSuperlayer];
+    }
 }
 - (void)cvtest{
-    self.m_DataSource = nil;
+    
 }
 
 

@@ -317,7 +317,18 @@ int bgIndex = 0;
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
 }
 - (IBAction)button_click:(id)sender {
-    [self.sv cvtest];
+    int tag = [sender tag];
+    switch (tag) {
+        case 0:
+            [self.sv displayStickerByName:@"catjump" catagory:@"" isDefault:YES];
+            break;
+        case 1:
+            [self.sv displayStickerByName:@"glassEye" catagory:@"" isDefault:YES];
+            break;
+            
+        default:
+            break;
+    }
 }
 - (void)prepareDate4StickerView{//改变sticerview的数据源，一般都是点击某个贴纸buttong后调用一次。
 //    self.viewCanvas.imgDic = [self.result objectForKey:@"frames"];
@@ -333,6 +344,7 @@ int bgIndex = 0;
 //    self.viewCanvas.arrPersons = arrPersons ;
 //    [self.viewCanvas setNeedsDisplay] ;
 }
+
 - (void) hideFace {
     if (!self.viewCanvas.hidden) {
         self.viewCanvas.hidden = YES ;

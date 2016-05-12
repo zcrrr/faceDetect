@@ -19,17 +19,26 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="qlc-id-4iZ">
-                                <rect key="frame" x="20" y="550" width="46" height="30"/>
-                                <state key="normal" title="Button"/>
+                                <rect key="frame" x="20" y="550" width="52" height="30"/>
+                                <state key="normal" title="Button1"/>
                                 <connections>
                                     <action selector="button_click:" destination="BYZ-38-t0r" eventType="touchUpInside" id="hd7-qX-Dva"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" tag="1" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="szn-8G-ay1">
+                                <rect key="frame" x="94" y="550" width="55" height="30"/>
+                                <state key="normal" title="Button2"/>
+                                <connections>
+                                    <action selector="button_click:" destination="BYZ-38-t0r" eventType="touchUpInside" id="qfP-Hm-iXd"/>
                                 </connections>
                             </button>
                         </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="calibratedWhite"/>
                         <constraints>
+                            <constraint firstItem="szn-8G-ay1" firstAttribute="leading" secondItem="qlc-id-4iZ" secondAttribute="trailing" constant="22" id="azF-rm-gRp"/>
                             <constraint firstAttribute="leadingMargin" secondItem="qlc-id-4iZ" secondAttribute="leading" id="sKd-wb-MV8"/>
                             <constraint firstItem="wfy-db-euE" firstAttribute="top" secondItem="qlc-id-4iZ" secondAttribute="bottom" constant="20" id="xCm-Pa-jfu"/>
+                            <constraint firstItem="wfy-db-euE" firstAttribute="top" secondItem="szn-8G-ay1" secondAttribute="bottom" constant="20" id="zlz-YO-s6D"/>
                         </constraints>
                     </view>
                 </viewController>
