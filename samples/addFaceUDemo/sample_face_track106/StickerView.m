@@ -13,10 +13,12 @@
 #import "SBJson.h"
 #define radians(degrees) (degrees * M_PI/180)
 static const float kMessageDisplayDuring = 2.0f;
+#define screenScale ([UIScreen mainScreen].bounds.size.width / 480.0)
 
 @interface StickerView()
 
 @property (strong, nonatomic) NSMutableDictionary *m_DataSource;
+@property (assign, nonatomic) BOOL m_isDataPrepared;
 @property (strong, nonatomic) UILabel *m_MessageLabel;
 // 类型为0的贴纸数组
 @property (strong, nonatomic) NSMutableArray *m_StickersType0;
@@ -24,8 +26,6 @@ static const float kMessageDisplayDuring = 2.0f;
 @property (strong, nonatomic) NSMutableArray *m_StickersType1;
 // 类型为23的贴纸数组,一起处理
 @property (strong, nonatomic) NSMutableArray *m_StickersType23;
-// 缓存元素的图片（避免二次裁切）
-@property (strong, nonatomic) NSMutableDictionary *m_ElementsImages;
 
 @end
 
@@ -50,84 +50,144 @@ static const float kMessageDisplayDuring = 2.0f;
     //类型2，3是根据脸有多少张，就有多少份的存在，这里先初始化一张脸的内存空间。
     NSMutableArray *face1 = [[NSMutableArray alloc]init];
     [self.m_StickersType23 addObject:face1];
-    self.m_ElementsImages = [[NSMutableDictionary alloc]init];
     self.m_MessageLabel.text = @"";
+    self.m_isDataPrepared = NO;
 }
 - (void)hideMessage{
     [UIView animateWithDuration:1 animations:^{
         self.m_MessageLabel.alpha = 0;
     }];
 }
-// 设置贴纸数据源
-- (void)displayStickerByName:(NSString*)name type:(NSString*)type isDefault:(BOOL)isDefault{
+- (NSString*)pathByName:(NSString*)name suffix:(NSString*)suffix catagory:(NSString*)catagory isDefault:(BOOL)isDefault{
+    if(isDefault){
+        return [[NSBundle mainBundle] pathForResource:name ofType:suffix];
+    }else{
+        NSArray *patharray = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString *path = [patharray[0] stringByAppendingString:[NSString stringWithFormat:@"/%@/%@.%@",catagory,name,suffix]];
+        NSLog(@"path:%@",path);
+        return path;
+    }
+}
+- (void)prepareData:(NSString*)name catagory:(NSString*)catagory isDefault:(BOOL)isDefault{
     [self initData];
     // 显示一下message
-//    self.m_MessageLabel.alpha = 1;
-//    self.m_MessageLabel.text = @"张开嘴";
-//    [self performSelector:@selector(hideMessage) withObject:nil afterDelay:kMessageDisplayDuring];
+    //    self.m_MessageLabel.alpha = 1;
+    //    self.m_MessageLabel.text = @"张开嘴";
+    //    [self performSelector:@selector(hideMessage) withObject:nil afterDelay:kMessageDisplayDuring];
     
     // 按照m_StickerName找到手机路径下的资源包
-    
-    if(isDefault) {
-        NSString *infoTxt =[[NSBundle mainBundle] pathForResource:name ofType:@"txt"];
-        NSString*str=[[NSString alloc] initWithContentsOfFile:infoTxt encoding:NSUTF8StringEncoding error:nil];
-        NSLog(@"%@",str);
-        SBJsonParser *jsonParser = [[SBJsonParser alloc]init];
-        NSDictionary *infoDic = [jsonParser objectWithString:str];
-        self.m_DataSource = [[NSMutableDictionary alloc]init];
-        for(NSDictionary *item in infoDic[@"itemList"]){
-            //对于每个item干两件事：创建对应的layer并加入到相应的容器，把需要的资源加载到m_DataSource
-            NSString *resourceName = item[@"resourceName"];
-            //把对应的png图片放入m_DataSource。（每个元素必须有个png，这里和类型没关系，无非png是一张图还是多张图拼的）
-            NSString *path = [[NSBundle mainBundle] pathForResource:resourceName ofType:@"png"];
-            UIImage *image = [UIImage imageWithContentsOfFile:path];
-            NSString *imgkey = [NSString stringWithFormat:@"%@_img",resourceName];
-            self.m_DataSource[imgkey] = image;
-            
-            HMSticker *sticker = [[HMSticker alloc]init];
-            sticker.m_Info = item;
-            sticker.m_CurrentFrame = 0;
-            // 按照json的顺序加入，保证了元素的上下层的关系
-            [self.layer addSublayer:sticker];
-            int type = [item[@"type"]intValue];
-            switch (type) {
-                case StickerTypePositionFixContentFix:
-                {
-                    [self.m_StickersType0 addObject:sticker];
-                    break;
-                }
-                case StickerTypePositionFixContentChange:
-                {
-                    //如果内容变化，会有一个json文件对应
-                    NSString *path = [[NSBundle mainBundle] pathForResource:resourceName ofType:@"json"];
-                    NSString*str=[[NSString alloc] initWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
-                    NSDictionary *itemjson = [jsonParser objectWithString:str];
-                    NSString *jsonkey = [NSString stringWithFormat:@"%@_json",resourceName];
-                    self.m_DataSource[jsonkey] = itemjson;
-                    [self.m_StickersType1 addObject:sticker];
-                    break;
-                }
-                case StickerTypePositionFollowContentFix:
-                {
-                    [self.m_StickersType23[0] addObject:sticker];
-                    break;
-                }
-                case StickerTypePositionFollowContentChange:
-                {
-                    //如果内容变化，会有一个json文件对应
-                    NSString *path = [[NSBundle mainBundle] pathForResource:resourceName ofType:@"json"];
-                    NSString*str=[[NSString alloc] initWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
-                    NSDictionary *itemjson = [jsonParser objectWithString:str];
-                    NSString *jsonkey = [NSString stringWithFormat:@"%@_json",resourceName];
-                    self.m_DataSource[jsonkey] = itemjson;
-                    [self.m_StickersType23[0] addObject:sticker];
-                    break;
-                }
-                default:
-                    break;
+    NSString *infoTxt = [self pathByName:name suffix:@"txt" catagory:catagory isDefault:isDefault];
+    NSString*str=[[NSString alloc] initWithContentsOfFile:infoTxt encoding:NSUTF8StringEncoding error:nil];
+    SBJsonParser *jsonParser = [[SBJsonParser alloc]init];
+    NSDictionary *infoDic = [jsonParser objectWithString:str];
+    self.m_DataSource = [[NSMutableDictionary alloc]init];
+    for(NSDictionary *item in infoDic[@"itemList"]){
+        //对于每个item干两件事：创建对应的layer并加入到相应的容器，把需要的资源加载到m_DataSource
+        NSString *resourceName = item[@"resourceName"];
+        //把对应的png图片放入m_DataSource。（每个元素必须有个png，这里和类型没关系，无非png是一张图还是多张图拼的）
+        NSString *path = [self pathByName:resourceName suffix:@"png" catagory:catagory isDefault:isDefault];
+        UIImage *image = [UIImage imageWithContentsOfFile:path];
+        NSString *imgkey = [NSString stringWithFormat:@"%@_img",resourceName];
+        HMSticker *sticker = [[HMSticker alloc]init];
+        sticker.m_Info = item;
+        sticker.m_CurrentFrame = 0;
+        // 按照json的顺序加入，保证了元素的上下层的关系
+        [self.layer addSublayer:sticker];
+        int type = [item[@"type"]intValue];
+        switch (type) {
+            case StickerTypePositionFixContentFix:
+            {
+                [self.m_StickersType0 addObject:sticker];
+                self.m_DataSource[imgkey] = image;
+                break;
             }
+            case StickerTypePositionFixContentChange:
+            {
+                //如果内容变化，会有一个json文件对应
+                NSString *path = [self pathByName:resourceName suffix:@"json" catagory:catagory isDefault:isDefault];
+                NSString*str=[[NSString alloc] initWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+                NSDictionary *itemjson = [jsonParser objectWithString:str];
+                //每一帧对应的图片数据的数组
+                NSMutableArray *frameImgs = [[NSMutableArray alloc]init];
+                //所有图片数据的dic，个数会<=frameImgs的个数，因为有不同帧使用相同图片的情况
+                NSMutableDictionary *allImages = [[NSMutableDictionary alloc]init];
+                int frameCount = [item[@"frames"]intValue];
+                for(int i = 0;i < frameCount;i++){
+                    NSString *frameKey = [NSString stringWithFormat:@"%@_%03d",resourceName,i];
+                    NSDictionary *thisFrameInfo = itemjson[@"frames"][frameKey];
+                    int x = [thisFrameInfo[@"x"]intValue];
+                    int y = [thisFrameInfo[@"y"]intValue];
+                    NSString *imgKey = [NSString stringWithFormat:@"%i_%i",x,y];
+                    if([[allImages allKeys]containsObject:imgkey]){
+                        NSData *imgData = allImages[imgKey];
+                        [frameImgs addObject:imgData];
+                    }else{
+                        @autoreleasepool {
+                            NSData *imgData = [self generateImgFromBigImg:image byInfo:thisFrameInfo];
+                            allImages[imgKey] = imgData;
+                            [frameImgs addObject:imgData];
+                        }
+                    }
+                }
+                self.m_DataSource[imgkey] = frameImgs;
+                [self.m_StickersType1 addObject:sticker];
+                break;
+            }
+            case StickerTypePositionFollowContentFix:
+            {
+                [self.m_StickersType23[0] addObject:sticker];
+                self.m_DataSource[imgkey] = image;
+                break;
+            }
+            case StickerTypePositionFollowContentChange:
+            {
+                //如果内容变化，会有一个json文件对应
+                NSString *path = [self pathByName:resourceName suffix:@"json" catagory:catagory isDefault:isDefault];
+                NSString*str=[[NSString alloc] initWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+                NSDictionary *itemjson = [jsonParser objectWithString:str];
+                
+                //每一帧对应的图片数据的数组
+                NSMutableArray *frameImgs = [[NSMutableArray alloc]init];
+                //所有图片数据的dic，个数会<=frameImgs的个数，因为有不同帧使用相同图片的情况
+                NSMutableDictionary *allImages = [[NSMutableDictionary alloc]init];
+                int frameCount = [item[@"frames"]intValue];
+                for(int i = 0;i < frameCount;i++){
+                    NSString *frameKey = [NSString stringWithFormat:@"%@_%03d",resourceName,i];
+                    NSDictionary *thisFrameInfo = itemjson[@"frames"][frameKey];
+                    int x = [thisFrameInfo[@"x"]intValue];
+                    int y = [thisFrameInfo[@"y"]intValue];
+                    NSString *imgKey = [NSString stringWithFormat:@"%i_%i",x,y];
+                    if([[allImages allKeys]containsObject:imgkey]){
+                        NSData *imgData = allImages[imgKey];
+                        [frameImgs addObject:imgData];
+                    }else{
+                        @autoreleasepool {
+                            NSData *imgData = [self generateImgFromBigImg:image byInfo:thisFrameInfo];
+                            allImages[imgKey] = imgData;
+                            [frameImgs addObject:imgData];
+                        }
+                    }
+                }
+                self.m_DataSource[imgkey] = frameImgs;
+                [self.m_StickersType23[0] addObject:sticker];
+                break;
+            }
+            default:
+                break;
         }
     }
+}
+// 设置贴纸数据源
+- (void)displayStickerByName:(NSString*)name catagory:(NSString*)catagory isDefault:(BOOL)isDefault{
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    dispatch_async(queue, ^{
+        self.m_isDataPrepared = NO;
+        [self prepareData:name catagory:catagory isDefault:isDefault];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.m_isDataPrepared = YES;
+            [self drawStickerOnlyOnce];
+        });
+    });
 //    NSLog(@"m_DataSource:%@",self.m_DataSource);
 //    NSLog(@"m_StickersType0:%@",self.m_StickersType0);
 //    NSLog(@"m_StickersType1:%@",self.m_StickersType1);
@@ -137,8 +197,8 @@ static const float kMessageDisplayDuring = 2.0f;
 
 - (void)refreshFaceData:(NSMutableArray*)persons{
     // 先判断数据源是否解析完毕，否则return
+    if(!self.m_isDataPrepared)return;
     if([[self.m_DataSource allKeys] count] == 0)return;
-//    NSLog(@"faceCount:%d",faceCount);
     int faceCount = (int)[persons count];
     if(faceCount == 0){
         self.hidden = YES;
@@ -174,11 +234,6 @@ static const float kMessageDisplayDuring = 2.0f;
         }
         NSDictionary *dicPerson = persons[i];
         int roll = [[dicPerson objectForKey:@"roll"]intValue];
-        if(roll < 0){
-            roll = roll + 90;
-        }else if(roll ){
-            roll = roll - 90;
-        }
         NSMutableArray *stickers = self.m_StickersType23[i];
         for (HMSticker *sticker in stickers) {
             //算宽高
@@ -216,13 +271,13 @@ static const float kMessageDisplayDuring = 2.0f;
             int targetX = followx + alignX * cosf(radians(roll)) * scale - alignY * sinf(radians(roll)) * scale;
             int targetY = followy + alignX * sinf(radians(roll)) * scale + alignY * cosf(radians(roll)) * scale;
             // 设置角度、位置、大小、贴图
-            CGPoint stickerCenter = CGPointMake(targetX, targetY);
+            CGPoint stickerCenter = CGPointMake(targetX * screenScale, targetY * screenScale);
             if(sticker.m_LastRoll != roll){
                 [self rotateStricker:roll :sticker];
                 sticker.m_LastRoll = roll;
             }
             sticker.position = stickerCenter;
-            sticker.bounds = CGRectMake(0, 0, width, height);
+            sticker.bounds = CGRectMake(0, 0, width * screenScale, height * screenScale);
             
             [self changeStickerContent:sticker];
         }
@@ -235,6 +290,7 @@ static const float kMessageDisplayDuring = 2.0f;
 - (void)drawStickerOnlyOnce{
     //type0的贴纸直接全部绘制出来
     for (HMSticker *sticker in self.m_StickersType0) {
+        [self.layer addSublayer:sticker];
         float originx = [sticker.m_Info[@"x"] floatValue];
         float originy = [sticker.m_Info[@"y"] floatValue];
         float width = [sticker.m_Info[@"width"] floatValue];
@@ -242,20 +298,23 @@ static const float kMessageDisplayDuring = 2.0f;
         
         NSString *imagekey = [NSString stringWithFormat:@"%@_img",sticker.m_Info[@"resourceName"]];
         UIImage *content = self.m_DataSource[imagekey];
-        sticker.position = CGPointMake(originx + width/2, originy + height/2);
-        sticker.bounds = CGRectMake(0, 0, width, height);
+        sticker.position = CGPointMake((originx + width/2) * screenScale, (originy + height/2) * screenScale);
+        sticker.bounds = CGRectMake(0, 0, width * screenScale, height * screenScale);
         CGImageRef imgref = [content CGImage];
         sticker.contents = (__bridge id _Nullable)imgref;
-        CGImageRelease(imgref);
     }
     //type1的贴纸可以先把轮廓绘制出来，稍后每帧改变内容。
     for (HMSticker *sticker in self.m_StickersType1) {
+        [self.layer addSublayer:sticker];
         float originx = [sticker.m_Info[@"x"] floatValue];
         float originy = [sticker.m_Info[@"y"] floatValue];
         float width = [sticker.m_Info[@"width"] floatValue];
         float height = [sticker.m_Info[@"height"] floatValue];
-        sticker.position = CGPointMake(originx + width/2, originy + height/2);
-        sticker.bounds = CGRectMake(0, 0, width, height);
+        sticker.position = CGPointMake((originx + width/2) * screenScale, (originy + height/2) * screenScale);
+        sticker.bounds = CGRectMake(0, 0, width * screenScale, height * screenScale);
+    }
+    for (HMSticker *sticker in self.m_StickersType23[0]) {
+        [self.layer addSublayer:sticker];
     }
 }
 /// type为1的贴纸的内容改变，每帧一次
@@ -269,55 +328,40 @@ static const float kMessageDisplayDuring = 2.0f;
     if(sticker.m_TheEnd)return;
     // 元素名
     NSString *resourceName = sticker.m_Info[@"resourceName"];
-    NSString *imageContent = [NSString stringWithFormat:@"%@_img",sticker.m_Info[@"resourceName"]];
+    NSString *imageContent = [NSString stringWithFormat:@"%@_img",resourceName];
     if([sticker.m_Info[@"type"]intValue] == StickerTypePositionFollowContentFix){
         UIImage *staticImg = self.m_DataSource[imageContent];
         sticker.contents = (__bridge id _Nullable)([staticImg CGImage]);
         sticker.m_TheEnd = YES;
         return;
     }
-    
-    NSString *jsonkey = [NSString stringWithFormat:@"%@_json",resourceName];
-    NSString *imageKey = [NSString stringWithFormat:@"%@_%03d",resourceName,sticker.m_CurrentFrame];
-    NSDictionary *jsonDic = self.m_DataSource[jsonkey][@"frames"][imageKey];
-    float imgx = [jsonDic[@"x"]floatValue];
-    float imgy = [jsonDic[@"y"]floatValue];
-    // 如果使用的图片和上次一样，则不用改变了
-    if(sticker.m_LastX == imgx && sticker.m_LastY == imgy)
-    {
-        sticker.m_CurrentFrame ++ ;
-        return;
-    }
-    UIImage *frameImg;
-    float imgw = [jsonDic[@"w"]floatValue];
-    float imgh = [jsonDic[@"h"]floatValue];
-    NSString *framekey = [NSString stringWithFormat:@"%f_%f",imgx,imgy];
-    if([[self.m_ElementsImages allKeys]containsObject:resourceName]){
-        NSMutableDictionary *dic = self.m_ElementsImages[resourceName];
-        if([[dic allKeys]containsObject:framekey]){
-            // 缓存里有这个贴纸的素材
-            frameImg = dic[framekey];
-            sticker.contents = (__bridge id _Nullable)([frameImg CGImage]);
-            sticker.m_LastX = imgx;
-            sticker.m_LastY = imgy;
-            sticker.m_CurrentFrame ++ ;
-            return;
-            
-        }
-    }else{
-        // 缓存里还没有该元素的字典缓存
-        NSMutableDictionary *thisElementImages = [[NSMutableDictionary alloc]init];
-        self.m_ElementsImages[resourceName] = thisElementImages;
-    }
-    
-    UIImage *content = self.m_DataSource[imageContent];
-    CGRect rectimg = CGRectMake(imgx, imgy, imgw, imgh);
-    CGImageRef imageRef = CGImageCreateWithImageInRect([content CGImage], rectimg);
-    self.m_ElementsImages[resourceName][framekey] = [UIImage imageWithCGImage:imageRef];
-    sticker.contents = CFBridgingRelease(imageRef);
-    sticker.m_LastX = imgx;
-    sticker.m_LastY = imgy;
+    NSMutableArray *frameImgs = self.m_DataSource[imageContent];
+    NSData *imgData = frameImgs[sticker.m_CurrentFrame];
+    sticker.contents = (__bridge id _Nullable)([[UIImage imageWithData:imgData]CGImage]);
     sticker.m_CurrentFrame ++ ;
 }
+- (NSData*)generateImgFromBigImg:(UIImage*)bigImage byInfo:(NSDictionary*)jsonDic{
+    int x = [jsonDic[@"x"]intValue];
+    int y = [jsonDic[@"y"]intValue];
+    int w = [jsonDic[@"w"]intValue];
+    int h = [jsonDic[@"h"]intValue];
+    int offX = [jsonDic[@"offX"]intValue];
+    int offY = [jsonDic[@"offY"]intValue];
+    int sourceW = [jsonDic[@"sourceW"]intValue];
+    int sourceH = [jsonDic[@"sourceH"]intValue];
+    CGRect rectimg = CGRectMake(x, y, w, h);
+    CGImageRef imageRef = CGImageCreateWithImageInRect([bigImage CGImage], rectimg);
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(sourceW, sourceH),NO,1.0);
+    [[UIImage imageWithCGImage:imageRef] drawInRect:CGRectMake(offX, offY, w, h)];
+    UIImage *resultImage=UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    CGImageRelease(imageRef);
+    NSData *imgData = UIImagePNGRepresentation(resultImage);
+    return imgData;
+}
+- (void)cvtest{
+    self.m_DataSource = nil;
+}
+
 
 @end

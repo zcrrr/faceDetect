@@ -12,6 +12,7 @@
 #import "CanvasView.h"
 #import "SBJson.h"
 #import "StickerView.h"
+int frame;
 @interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate>{
     int _screenWidth;
     int _screenHeight;
@@ -44,7 +45,6 @@ int bgIndex = 0;
     NSString*filePath=[[NSBundle mainBundle] pathForResource:@"glassEye"ofType:@"json"];
     
     NSString*str=[[NSString alloc] initWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:nil];
-    NSLog(@"%@",str);
     
     SBJsonParser *jsonParser = [[SBJsonParser alloc]init];
     self.result = [jsonParser objectWithString:str];
@@ -67,7 +67,7 @@ int bgIndex = 0;
 {
     [super viewDidAppear:animated];
     NSLog(@"self.view:%f,%f",self.view.frame.size.width,self.view.frame.size.height);
-    
+    NSLog(@"screen:%f",[UIScreen mainScreen].bounds.size.width);
     AVCaptureSession *session = [[AVCaptureSession alloc] init];
     // Added by tony
     session.sessionPreset = AVCaptureSessionPreset640x480;
@@ -86,8 +86,9 @@ int bgIndex = 0;
     }
     // to here, get the frame size.
     self.captureVideoPreviewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:session];
-    self.captureVideoPreviewLayer.frame = CGRectMake( 0, 0, 480, 640 ) ;
-    self.captureVideoPreviewLayer.position = self.view.center;
+    float screenWidth = [UIScreen mainScreen].bounds.size.width;
+    self.captureVideoPreviewLayer.frame = CGRectMake( 0, 0, screenWidth, screenWidth * 4.0 / 3.0 ) ;
+    self.captureVideoPreviewLayer.position = CGPointMake(screenWidth / 2, screenWidth * 2.0 / 3.0);
     [self.captureVideoPreviewLayer setVideoGravity:AVLayerVideoGravityResizeAspectFill];
     [self.view.layer addSublayer:self.captureVideoPreviewLayer];
     
@@ -103,7 +104,8 @@ int bgIndex = 0;
 //    self.viewCanvas.bgimage = [UIImage imageNamed:@"glassEye.png"];
     
     self.sv = [[StickerView alloc]initWithFrame:self.captureVideoPreviewLayer.frame];
-    [self.sv displayStickerByName:@"glassEye" type:@"" isDefault:YES];
+    self.sv.clipsToBounds = YES;
+    [self.sv displayStickerByName:@"catjump" catagory:@"" isDefault:YES];
     [self.view addSubview:self.sv];
 //
 //    UIView* myview = [[UIView alloc]initWithFrame:CGRectMake(0, self.view.frame.size.height - 80, self.view.frame.size.width, 80)];
@@ -150,12 +152,14 @@ int bgIndex = 0;
     if ([session canAddOutput:dataOutput]) {
         [session addOutput:dataOutput];
     }
+//    AVCaptureDeviceFormat *vFormat = [self.device formats][1];
+//    CMFormatDescriptionRef description= vFormat.formatDescription;
+//    float maxrate=((AVFrameRateRange*)[vFormat.videoSupportedFrameRateRanges objectAtIndex:0]).maxFrameRate;
+//    NSLog(@"maxrate is %f",maxrate);
     //下面这段代码可以设置output频率但是其他相关设置也得对应上。
 //    for(AVCaptureDeviceFormat *vFormat in [self.device formats])
 //    {
-//        CMFormatDescriptionRef description= vFormat.formatDescription;
-//        float maxrate=((AVFrameRateRange*)[vFormat.videoSupportedFrameRateRanges objectAtIndex:0]).maxFrameRate;
-//        NSLog(@"maxrate is %f",maxrate);
+    
 //        if(maxrate>59 && CMFormatDescriptionGetMediaSubType(description)==kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
 //        {
 //            if ( YES == [self.device lockForConfiguration:NULL] )
@@ -222,14 +226,13 @@ int bgIndex = 0;
         mirror = YES;
     }
     if ( iRet == CV_OK && iCount > 0 ) {
-        
         NSMutableArray *arrPersons = [NSMutableArray array] ;
         for (int i = 0; i < iCount ; i ++) {
             
             cv_face_106_t rectIDMain = pFaceRectID[i] ;
             
             NSMutableArray *arrStrPoints = [NSMutableArray array] ;
-//            NSLog(@"rotation is %i",rectIDMain.roll);
+            int roll = rectIDMain.roll;
             CGRect rectFace = CGRectZero;
             
             cv_pointf_t *facialPoints = rectIDMain.points_array;
@@ -241,10 +244,49 @@ int bgIndex = 0;
                     [arrStrPoints addObject:NSStringFromCGPoint(CGPointMake(_screenWidth - facialPoints[i].y, facialPoints[i].x))] ;
                 }
             }
-            
+            float x43 = CGPointFromString(arrStrPoints[43]).x;
+            float y43 = CGPointFromString(arrStrPoints[43]).y;
+            float x16 = CGPointFromString(arrStrPoints[16]).x;
+            float y16 = CGPointFromString(arrStrPoints[16]).y;
+            if(roll == 0){
+                roll = (x43 > x16)?90:-90;
+            }else if(roll == 90 || roll == -90){
+                roll = (y43 < y16)?0:180;
+            }else{
+                if(mirror){
+                    if(roll > 0){
+                        if(roll < 45){
+                            roll = (x43 < x16)?roll - 90:roll + 90;
+                        }else{
+                            roll = (y43 < y16)?roll - 90:roll + 90;
+                        }
+                    }else{
+                        if(roll > -45){
+                            roll = (x43 < x16)?roll - 90:roll + 90;
+                        }else{
+                            roll = (y43 < y16)?roll + 90:roll - 90;
+                        }
+                    }
+                }else{
+                    if(roll > 0){
+                        if(roll < 45){
+                            roll = (x43 < x16)?-roll - 90:90 - roll;
+                        }else{
+                            roll = (y43 < y16)?90 - roll:-roll - 90;
+                        }
+                    }else{
+                        if(roll > -45){
+                            roll = (x43 < x16)? -roll - 90:90 - roll;
+                        }else{
+                            roll = (y43 < y16)? -roll - 90:90 - roll;
+                        }
+                    }
+                }
+            }
             cv_rect_t rect = rectIDMain.rect ;
-            if (mirror) {
+            if (mirror) {//前置
                 rectFace = CGRectMake(rect.top, rect.left, rect.right - rect.left, rect.bottom - rect.top);
+                
             } else {
                 rectFace = CGRectMake(_screenWidth - rect.top - (rect.right - rect.left) , rect.left , rect.right - rect.left, rect.bottom - rect.top);
             }
@@ -252,8 +294,7 @@ int bgIndex = 0;
             NSMutableDictionary *dicPerson = [NSMutableDictionary dictionary] ;
             [dicPerson setObject:arrStrPoints forKey:POINTS_KEY];
             [dicPerson setObject:NSStringFromCGRect(rectFace) forKey:RECT_KEY];
-            [dicPerson setObject:[NSNumber numberWithInt:rectIDMain.roll] forKey:@"roll"];
-            
+            [dicPerson setObject:[NSNumber numberWithInt:roll] forKey:@"roll"];
             [arrPersons addObject:dicPerson] ;
         }
 //        NSLog(@"y:%f",pFaceRectID[0].points_array[0].y);
@@ -263,14 +304,10 @@ int bgIndex = 0;
 //            NSLog(@"count:%i",pFaceRectID[0].points_count);
 //            [self showFaceLandmarksAndFaceRectWithPersonsArray:arrPersons];
             [self.sv refreshFaceData:arrPersons];
-            
-            
             if (self.sv.hidden) {
                 self.sv.hidden = NO ;
             }
-
         } ) ;
-        
     } else {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self hideFace];
@@ -278,6 +315,9 @@ int bgIndex = 0;
     }
     cv_face_release_tracker_106_result(pFaceRectID, iCount);
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+}
+- (IBAction)button_click:(id)sender {
+    [self.sv cvtest];
 }
 - (void)prepareDate4StickerView{//改变sticerview的数据源，一般都是点击某个贴纸buttong后调用一次。
 //    self.viewCanvas.imgDic = [self.result objectForKey:@"frames"];
@@ -292,8 +332,6 @@ int bgIndex = 0;
 //    }
 //    self.viewCanvas.arrPersons = arrPersons ;
 //    [self.viewCanvas setNeedsDisplay] ;
-    
-    
 }
 - (void) hideFace {
     if (!self.viewCanvas.hidden) {

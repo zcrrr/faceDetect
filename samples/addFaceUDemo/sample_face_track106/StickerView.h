@@ -18,10 +18,12 @@ typedef NS_ENUM(NSInteger, STICKERTYPE)
 @interface StickerView : UIView
 
 /// 点击某个贴纸,name:贴纸名  type:大类  isDefault:是否安装时自带
-- (void)displayStickerByName:(NSString*)name type:(NSString*)type isDefault:(BOOL)isDefault;
+- (void)displayStickerByName:(NSString*)name catagory:(NSString*)catagory isDefault:(BOOL)isDefault;
 
 /// 人脸识别数据结果
 - (void)refreshFaceData:(NSMutableArray*)persons;
+
+- (void)cvtest;
 
 
 

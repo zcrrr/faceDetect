@@ -16,7 +16,6 @@
 - (instancetype)init{
     self = [super init];
     if (self) {
-        NSLog(@"create layer");
         NSDictionary *actions = @{@"bounds":[NSNull null],@"position":[NSNull null],@"transform":[NSNull null],@"contents":[NSNull null]};
         self.actions = actions;
     }
